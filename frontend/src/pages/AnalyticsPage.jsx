@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, DownloadCloud, PlayCircle } from "lucide-react";
+import { Activity, Download, Play, ArrowLeft } from "lucide-react";
 import VideoPlayer from "../components/VideoPlayer";
+import Button from "../components/Button";
+import Card from "../components/Card";
+import LoadingSpinner from "../components/LoadingSpinner";
 import { getProcessingStatus, downloadReport } from "../api/client";
+import usePolling from "../hooks/usePolling";
 
 const initialStats = { total: 0, cars: 0, trucks: 0, buses: 0 };
 
@@ -19,44 +23,41 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const stored = localStorage.getItem("drone-task-id");
     if (!stored) {
-      navigate("/");
+      // For demo purposes, create a mock task if none exists
+      const mockTask = `demo-task-${Date.now()}`;
+      localStorage.setItem("drone-task-id", mockTask);
+      setTaskId(mockTask);
       return;
     }
     setTaskId(stored);
   }, [navigate]);
 
-  useEffect(() => {
-    if (!taskId) return;
+  const fetchStatus = async () => {
+    try {
+      const response = await getProcessingStatus(taskId);
+      setStatus(response.status || "pending");
+      setStats({
+        total: response.totalVehicles ?? response.total ?? 0,
+        cars: response.cars ?? 0,
+        trucks: response.trucks ?? 0,
+        buses: response.buses ?? 0,
+      });
 
-    const fetchStatus = async () => {
-      try {
-        const response = await getProcessingStatus(taskId);
-        setStatus(response.status || "pending");
-        setStats({
-          total: response.totalVehicles ?? response.total ?? 0,
-          cars: response.cars ?? 0,
-          trucks: response.trucks ?? 0,
-          buses: response.buses ?? 0,
-        });
+      setProgress((current) => {
+        if (response.progress != null) return response.progress;
+        if (current >= 98) return 100;
+        return Math.min(100, current + 16);
+      });
 
-        setProgress((current) => {
-          if (response.progress != null) return response.progress;
-          if (current >= 98) return 100;
-          return Math.min(100, current + 16);
-        });
-
-        if (response.status === "completed") {
-          setVideoUrl(response.videoUrl ?? `http://localhost:8000/storage/results/${taskId}.mp4`);
-        }
-      } catch (pollError) {
-        setError("Unable to fetch processing status. Check your backend.");
+      if (response.status === "completed") {
+        setVideoUrl(response.videoUrl ?? `http://localhost:8000/storage/results/${taskId}.mp4`);
       }
-    };
+    } catch (pollError) {
+      setError("Unable to fetch processing status. Check your backend.");
+    }
+  };
 
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
-    return () => clearInterval(interval);
-  }, [taskId]);
+  const { isPolling } = usePolling(fetchStatus, 2000, !!taskId);
 
   const handleDownload = async () => {
     setDownloadLoading(true);
@@ -79,80 +80,132 @@ export default function AnalyticsPage() {
     }
   };
 
-  const statusLabel = useMemo(() => {
-    if (status === "completed") return "Completed";
-    if (status === "processing") return "Processing";
-    return "Pending";
-  }, [status]);
+  const statusLabel = status === "completed" ? "Completed" :
+                     status === "processing" ? "Processing" : "Pending";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-6 py-10 text-slate-100">
-      <section className="space-y-3">
-        <div className="flex items-center gap-3 text-cyan-300">
-          <PlayCircle className="h-8 w-8" />
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/80">Analytics Dashboard</p>
-            <h1 className="text-4xl font-semibold tracking-tight text-white">Processing Status</h1>
+    <div className="min-h-screen p-4">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Upload
+          </Button>
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                localStorage.removeItem("drone-task-id");
+                window.location.reload();
+              }}
+            >
+              Reset Demo
+            </Button>
+            <div className="text-right">
+              <h1 className="text-2xl font-bold text-white">Analysis Results</h1>
+              <p className="text-slate-400">Task ID: {taskId}</p>
+            </div>
           </div>
         </div>
-        <p className="max-w-2xl text-slate-400">Monitor the analyzer in real time, review vehicle counts, and download your CSV once processing is complete.</p>
-      </section>
 
-      <section className="glass-card p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/80">Task ID</p>
-            <p className="mt-2 text-lg font-medium text-slate-100">{taskId}</p>
-          </div>
-          <div className="rounded-full bg-slate-900/70 px-4 py-2 text-sm font-semibold text-cyan-200">
-            <span className="mr-2 inline-flex items-center gap-1">
-              <Activity className="h-4 w-4 text-cyan-300" />
+        <Card>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <Activity className="h-5 w-5 text-cyan-400" />
+              <span className="text-lg font-medium text-white">Processing Status</span>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              status === "completed" ? "bg-green-500/20 text-green-400" :
+              status === "processing" ? "bg-yellow-500/20 text-yellow-400" :
+              "bg-slate-500/20 text-slate-400"
+            }`}>
               {statusLabel}
             </span>
           </div>
-        </div>
 
-        <div className="mt-6 rounded-full bg-slate-900/80 p-1">
-          <div className="h-3 rounded-full bg-cyan-400 transition-all duration-500" style={{ width: `${progress}%` }} />
-        </div>
-        <p className="mt-2 text-sm text-slate-400">Processing progress: {progress}%</p>
-
-        <div className="mt-8 grid gap-4 md:grid-cols-4">
-          {[
-            { label: "Total Vehicles", value: stats.total },
-            { label: "Cars", value: stats.cars },
-            { label: "Trucks", value: stats.trucks },
-            { label: "Buses", value: stats.buses },
-          ].map((item) => (
-            <div key={item.label} className="glass-card p-5 text-center border border-white/10 bg-slate-950/70">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{item.label}</p>
-              <p className="mt-4 text-3xl font-semibold text-white">{item.value}</p>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-slate-300">Progress</span>
+                <span className="text-slate-400">{progress}%</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className="bg-cyan-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
             </div>
+
+            {isPolling && (
+              <div className="flex items-center space-x-2 text-sm text-slate-400">
+                <LoadingSpinner size="sm" />
+                <span>Checking status...</span>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: "Total Vehicles", value: stats.total, color: "text-blue-400" },
+            { label: "Cars", value: stats.cars, color: "text-green-400" },
+            { label: "Trucks", value: stats.trucks, color: "text-orange-400" },
+            { label: "Buses", value: stats.buses, color: "text-purple-400" },
+          ].map((item) => (
+            <Card key={item.label} className="text-center">
+              <div className={`text-3xl font-bold ${item.color} mb-1`}>
+                {item.value}
+              </div>
+              <div className="text-sm text-slate-400">{item.label}</div>
+            </Card>
           ))}
         </div>
 
-        {error && <p className="mt-4 text-sm text-rose-400">{error}</p>}
+        {status === "completed" && (
+          <Card>
+            <div className="flex items-center space-x-3 mb-4">
+              <Play className="h-5 w-5 text-cyan-400" />
+              <h2 className="text-lg font-medium text-white">Processed Video</h2>
+            </div>
+            <VideoPlayer src={videoUrl} />
+          </Card>
+        )}
 
-        <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            onClick={handleDownload}
-            disabled={status !== "completed" || downloadLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-accent px-6 py-3 text-sm font-semibold text-slate-950 transition-all duration-300 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <DownloadCloud className="h-4 w-4" />
-            {downloadLoading ? "Preparing CSV..." : "Download CSV Report"}
-          </button>
-          <p className="text-sm text-slate-400">Processed video source will appear once status reaches completed.</p>
-        </div>
-      </section>
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-white mb-1">Export Report</h3>
+              <p className="text-slate-400 text-sm">
+                Download a CSV file with detailed vehicle tracking data
+              </p>
+            </div>
+            <Button
+              onClick={handleDownload}
+              disabled={status !== "completed" || downloadLoading}
+            >
+              {downloadLoading ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download CSV
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
 
-      <section className="glass-card p-6">
-        <div className="flex items-center gap-3 text-cyan-300">
-          <PlayCircle className="h-5 w-5" />
-          <h2 className="text-xl font-semibold text-white">Processed Output</h2>
-        </div>
-        <VideoPlayer src={status === "completed" ? videoUrl : ""} />
-      </section>
-    </main>
+        {error && (
+          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

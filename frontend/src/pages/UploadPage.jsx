@@ -44,10 +44,7 @@ export default function UploadPage() {
       localStorage.setItem("drone-task-id", result.taskId);
       navigate("/analytics");
     } catch (uploadError) {
-      // For demo purposes, still proceed even if upload fails
-      const mockTaskId = `demo-${Date.now()}`;
-      localStorage.setItem("drone-task-id", mockTaskId);
-      navigate("/analytics");
+      setError("Upload failed. Please check your connection and try again.");
     } finally {
       setUploading(false);
     }

@@ -1,10 +1,11 @@
-class Reporter:
-    def __init__(self):
-        self.report_data = []
+import pandas as pd
+import os
 
-    def add_record(self, record):
-        self.report_data.append(record)
-
-    def generate(self, format: str = "csv"):
-        # TODO: serialize report data to CSV or Excel formats
-        return {"format": format, "rows": len(self.report_data)}
+def generate_csv_report(history, job_id, result_dir, duration):
+    df = pd.DataFrame(history)
+    report_path = os.path.join(result_dir, f"{job_id}_report.csv")
+    
+    # Add metadata as header or separate rows if needed
+    # For simplicity, we save the detection log
+    df.to_csv(report_path, index=False)
+    return report_path

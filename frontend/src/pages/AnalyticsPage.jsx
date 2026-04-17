@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Activity, Download, Play, ArrowLeft } from "lucide-react";
 import VideoPlayer from "../components/VideoPlayer";
@@ -14,51 +14,64 @@ export default function AnalyticsPage() {
   const navigate = useNavigate();
   const [taskId, setTaskId] = useState("");
   const [status, setStatus] = useState("pending");
-  const [progress, setProgress] = useState(12);
+  const [progress, setProgress] = useState(0);
   const [stats, setStats] = useState(initialStats);
   const [videoUrl, setVideoUrl] = useState("");
   const [error, setError] = useState("");
   const [downloadLoading, setDownloadLoading] = useState(false);
 
+  // 1. Get taskId from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem("drone-task-id");
     if (!stored) {
-      // For demo purposes, create a mock task if none exists
-      const mockTask = `demo-task-${Date.now()}`;
-      localStorage.setItem("drone-task-id", mockTask);
-      setTaskId(mockTask);
+      navigate("/");
       return;
     }
     setTaskId(stored);
   }, [navigate]);
 
-  const fetchStatus = async () => {
+  // 2. Wrap fetchStatus in useCallback to stop the infinite re-render loop
+  const fetchStatus = useCallback(async () => {
+    if (!taskId) return;
+
     try {
       const response = await getProcessingStatus(taskId);
-      setStatus(response.status || "pending");
-      setStats({
-        total: response.totalVehicles ?? response.total ?? 0,
-        cars: response.cars ?? 0,
-        trucks: response.trucks ?? 0,
-        buses: response.buses ?? 0,
-      });
+      
+      // Update basic status
+      const currentStatus = response.status || "pending";
+      setStatus(currentStatus);
 
-      setProgress((current) => {
-        if (response.progress != null) return response.progress;
-        if (current >= 98) return 100;
-        return Math.min(100, current + 16);
-      });
-
-      if (response.status === "completed") {
-        setVideoUrl(response.videoUrl ?? `http://localhost:8000/storage/results/${taskId}.mp4`);
+      // Map backend snake_case to frontend state
+      if (response.counts_by_class) {
+        setStats({
+          total: response.total_count || 0,
+          cars: response.counts_by_class.car || 0,
+          trucks: response.counts_by_class.truck || 0,
+          buses: response.counts_by_class.bus || 0,
+        });
       }
+
+      // Update progress bar
+      if (response.progress !== undefined) {
+        setProgress(response.progress);
+      }
+
+      // If completed, construct the full URL for the video
+      if (currentStatus === "completed" && response.video_url) {
+        setVideoUrl(`http://localhost:8000${response.video_url}`);
+      }
+
     } catch (pollError) {
-      setError("Unable to fetch processing status. Check your backend.");
+      console.error("Polling error:", pollError);
+      setError("Unable to fetch processing status. Ensure the backend is running.");
     }
-  };
+  }, [taskId]);
 
-  const { isPolling } = usePolling(fetchStatus, 2000, !!taskId);
+  // 3. Polling Control: Stops automatically when status is "completed" or "error"
+  const isEnabled = !!taskId && status !== "completed" && status !== "error";
+  const { isPolling } = usePolling(fetchStatus, 2000, isEnabled);
 
+  // 4. Handle CSV Export
   const handleDownload = async () => {
     setDownloadLoading(true);
     setError("");
@@ -84,31 +97,22 @@ export default function AnalyticsPage() {
                      status === "processing" ? "Processing" : "Pending";
 
   return (
-    <div className="min-h-screen p-4">
+    <div className="min-h-screen p-4 bg-slate-950">
       <div className="max-w-4xl mx-auto space-y-6">
+        
+        {/* Header section */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Upload
           </Button>
-          <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                localStorage.removeItem("drone-task-id");
-                window.location.reload();
-              }}
-            >
-              Reset Demo
-            </Button>
-            <div className="text-right">
-              <h1 className="text-2xl font-bold text-white">Analysis Results</h1>
-              <p className="text-slate-400">Task ID: {taskId}</p>
-            </div>
+          <div className="text-right">
+            <h1 className="text-2xl font-bold text-white">Analysis Results</h1>
+            <p className="text-slate-400 text-sm">Task ID: {taskId}</p>
           </div>
         </div>
 
+        {/* Status Card */}
         <Card>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
@@ -127,68 +131,73 @@ export default function AnalyticsPage() {
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-300">Progress</span>
-                <span className="text-slate-400">{progress}%</span>
+                <span className="text-slate-300">Analysis Progress</span>
+                <span className="text-slate-400 font-mono">{progress}%</span>
               </div>
-              <div className="w-full bg-slate-700 rounded-full h-2">
+              <div className="w-full bg-slate-800 rounded-full h-3 p-0.5">
                 <div
-                  className="bg-cyan-500 h-2 rounded-full transition-all duration-500"
+                  className="bg-cyan-500 h-2 rounded-full transition-all duration-700 ease-out"
                   style={{ width: `${progress}%` }}
                 />
               </div>
             </div>
 
             {isPolling && (
-              <div className="flex items-center space-x-2 text-sm text-slate-400">
+              <div className="flex items-center space-x-2 text-sm text-slate-400 italic">
                 <LoadingSpinner size="sm" />
-                <span>Checking status...</span>
+                <span>Synchronizing with vision engine...</span>
               </div>
             )}
           </div>
         </Card>
 
+        {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total Vehicles", value: stats.total, color: "text-blue-400" },
+            { label: "Total Unique", value: stats.total, color: "text-blue-400" },
             { label: "Cars", value: stats.cars, color: "text-green-400" },
             { label: "Trucks", value: stats.trucks, color: "text-orange-400" },
             { label: "Buses", value: stats.buses, color: "text-purple-400" },
           ].map((item) => (
-            <Card key={item.label} className="text-center">
-              <div className={`text-3xl font-bold ${item.color} mb-1`}>
+            <Card key={item.label} className="text-center py-6">
+              <div className={`text-4xl font-bold ${item.color} mb-1 font-mono`}>
                 {item.value}
               </div>
-              <div className="text-sm text-slate-400">{item.label}</div>
+              <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">{item.label}</div>
             </Card>
           ))}
         </div>
 
-        {status === "completed" && (
-          <Card>
+        {/* Video Visualization - Only renders when completed and URL is ready */}
+        {status === "completed" && videoUrl && (
+          <Card className="overflow-hidden border-cyan-500/30">
             <div className="flex items-center space-x-3 mb-4">
               <Play className="h-5 w-5 text-cyan-400" />
-              <h2 className="text-lg font-medium text-white">Processed Video</h2>
+              <h2 className="text-lg font-medium text-white">Processed Visualization</h2>
             </div>
-            <VideoPlayer src={videoUrl} />
+            {/* key={videoUrl} ensures the component reloads when the final URL arrives */}
+            <VideoPlayer src={videoUrl} key={videoUrl} />
           </Card>
         )}
 
-        <Card>
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-medium text-white mb-1">Export Report</h3>
+        {/* Export Card */}
+        <Card className="bg-slate-900/40">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-center md:text-left">
+              <h3 className="text-lg font-medium text-white mb-1">Export Telemetry Data</h3>
               <p className="text-slate-400 text-sm">
-                Download a CSV file with detailed vehicle tracking data
+                Generate a CSV report containing tracking IDs and timestamps.
               </p>
             </div>
             <Button
               onClick={handleDownload}
               disabled={status !== "completed" || downloadLoading}
+              className="w-full md:w-auto min-w-[160px]"
             >
               {downloadLoading ? (
                 <>
                   <LoadingSpinner size="sm" className="mr-2" />
-                  Downloading...
+                  Generating...
                 </>
               ) : (
                 <>
@@ -201,8 +210,8 @@ export default function AnalyticsPage() {
         </Card>
 
         {error && (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <p className="text-red-400 text-sm">{error}</p>
+          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg animate-pulse">
+            <p className="text-red-400 text-sm font-medium">{error}</p>
           </div>
         )}
       </div>

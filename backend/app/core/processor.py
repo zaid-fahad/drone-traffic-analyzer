@@ -38,6 +38,7 @@ def process_video(input_path, job_id):
     start_time = time.time()
 
     while cap.isOpened():
+        
         ret, frame = cap.read()
         if not ret: break
 
@@ -90,6 +91,14 @@ def process_video(input_path, job_id):
             job_record.total_count = counts["inbound"]["total"] + counts["outbound"]["total"]
             job_record.counts_by_class = counts # DB saves the full split JSON
             db.commit()
+        # Every 30 frames, check if the user cancelled the job
+        if frame_idx % 30 == 0:
+            db.refresh(job_record) # Pull latest status from DB
+            if job_record.status == "cancelled":
+                cap.release()
+                out.release()
+                db.close()
+                return # Self-terminate the thread
 
     cap.release()
     out.release()

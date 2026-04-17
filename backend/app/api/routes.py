@@ -77,3 +77,17 @@ async def download_report(job_id: str, db: Session = Depends(get_db)):
             filename=f"traffic_analysis_{job.filename}.csv"
         )
     raise HTTPException(status_code=404, detail="Physical report file missing")
+
+@router.delete("/jobs/{job_id}")
+async def cancel_job(job_id: str, db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # If it's already completed, we just delete the record/files
+    # If it's processing, the processor will see this and stop
+    job.status = "cancelled"
+    db.commit()
+    
+    # Optional: Logic to delete files from storage/uploads and storage/results
+    return {"message": "Task cancellation signaled"}

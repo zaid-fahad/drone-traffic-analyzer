@@ -48,3 +48,8 @@ export async function downloadReport(taskId) {
 
   return response.data;
 }
+
+export async function cancelJob(taskId) {
+  const response = await api.delete(`/jobs/${taskId}`);
+  return response.data;
+}

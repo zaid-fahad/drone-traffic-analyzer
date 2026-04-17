@@ -1,0 +1,39 @@
+# --- System Files ---
+.DS_Store
+Thumbs.db
+*.log
+
+# --- Frontend (Node/Vite) ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/.vscode/
+
+# --- Backend (Python/FastAPI) ---
+backend/__pycache__/
+backend/*.py[cod]
+backend/venv/
+backend/env/
+backend/.env
+backend/.pytest_cache/
+
+# --- Database (SQLite) ---
+# Keep the schema in code, but keep the actual data local
+backend/*.db
+backend/*.db-journal
+
+# --- AI Models & Weights ---
+# These are too large for Git; usually hosted on S3/HF
+backend/weights/*.pt
+backend/weights/*.onnx
+
+# --- Storage & Results ---
+# We ignore the files but keep the directories
+backend/storage/uploads/*
+backend/storage/results/*
+!backend/storage/uploads/.gitkeep
+!backend/storage/results/.gitkeep
+
+# --- Docker ---
+.docker/

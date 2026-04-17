@@ -20,7 +20,6 @@ export default function AnalyticsPage() {
   const [error, setError] = useState("");
   const [downloadLoading, setDownloadLoading] = useState(false);
 
-  // 1. Get taskId from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem("drone-task-id");
     if (!stored) {
@@ -30,18 +29,13 @@ export default function AnalyticsPage() {
     setTaskId(stored);
   }, [navigate]);
 
-  // 2. Wrap fetchStatus in useCallback to stop the infinite re-render loop
   const fetchStatus = useCallback(async () => {
     if (!taskId) return;
-
     try {
       const response = await getProcessingStatus(taskId);
-      
-      // Update basic status
       const currentStatus = response.status || "pending";
       setStatus(currentStatus);
 
-      // Map backend snake_case to frontend state
       if (response.counts_by_class) {
         setStats({
           total: response.total_count || 0,
@@ -51,31 +45,25 @@ export default function AnalyticsPage() {
         });
       }
 
-      // Update progress bar
       if (response.progress !== undefined) {
         setProgress(response.progress);
       }
 
-      // If completed, construct the full URL for the video
       if (currentStatus === "completed" && response.video_url) {
         setVideoUrl(`http://localhost:8000${response.video_url}`);
       }
-
     } catch (pollError) {
       console.error("Polling error:", pollError);
       setError("Unable to fetch processing status. Ensure the backend is running.");
     }
   }, [taskId]);
 
-  // 3. Polling Control: Stops automatically when status is "completed" or "error"
   const isEnabled = !!taskId && status !== "completed" && status !== "error";
   const { isPolling } = usePolling(fetchStatus, 2000, isEnabled);
 
-  // 4. Handle CSV Export
   const handleDownload = async () => {
     setDownloadLoading(true);
     setError("");
-
     try {
       const blob = await downloadReport(taskId);
       const url = URL.createObjectURL(blob);
@@ -100,11 +88,11 @@ export default function AnalyticsPage() {
     <div className="min-h-screen p-4 bg-slate-950">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Header section */}
+        {/* Header section - UPDATED BUTTON */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Upload
+            Back to Dashboard
           </Button>
           <div className="text-right">
             <h1 className="text-2xl font-bold text-white">Analysis Results</h1>
@@ -112,7 +100,6 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Status Card */}
         <Card>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
@@ -151,7 +138,6 @@ export default function AnalyticsPage() {
           </div>
         </Card>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: "Total Unique", value: stats.total, color: "text-blue-400" },
@@ -168,19 +154,16 @@ export default function AnalyticsPage() {
           ))}
         </div>
 
-        {/* Video Visualization - Only renders when completed and URL is ready */}
         {status === "completed" && videoUrl && (
           <Card className="overflow-hidden border-cyan-500/30">
             <div className="flex items-center space-x-3 mb-4">
               <Play className="h-5 w-5 text-cyan-400" />
               <h2 className="text-lg font-medium text-white">Processed Visualization</h2>
             </div>
-            {/* key={videoUrl} ensures the component reloads when the final URL arrives */}
             <VideoPlayer src={videoUrl} key={videoUrl} />
           </Card>
         )}
 
-        {/* Export Card */}
         <Card className="bg-slate-900/40">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-center md:text-left">

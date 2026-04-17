@@ -1,7 +1,15 @@
+# Web Server
 fastapi
 uvicorn
 python-multipart
+
+# Computer Vision & Tracking
 ultralytics
 opencv-python
+
+# Database (ORM)
+sqlalchemy
+
+# Data & Reporting
 pandas
 openpyxl

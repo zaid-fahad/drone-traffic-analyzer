@@ -5,10 +5,14 @@ from app.core.detector import TrafficDetector
 from app.core.annotator import VideoAnnotator
 from app.core.converter import convert_to_h264
 from app.core.reporter import generate_csv_report
-
-jobs = {}
+from app.db.database import SessionLocal
+from app.db.models import Job
 
 def process_video(input_path, job_id):
+    # Create a fresh DB session for this thread
+    db = SessionLocal()
+    job_record = db.query(Job).filter(Job.id == job_id).first()
+    
     detector = TrafficDetector()
     annotator = VideoAnnotator()
     cap = cv2.VideoCapture(input_path)
@@ -19,7 +23,6 @@ def process_video(input_path, job_id):
     
     temp_path = os.path.join("storage/results", f"{job_id}_temp.mp4")
     final_path = os.path.join("storage/results", f"{job_id}_processed.mp4")
-    
     out = cv2.VideoWriter(temp_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
     counted_ids = set()
@@ -36,8 +39,6 @@ def process_video(input_path, job_id):
         if not ret: break
 
         results = detector.track_frame(frame)
-        
-        # 1. Custom Background Annotations
         annotator.draw_counting_line(frame, line_y, width)
 
         if results.boxes.id is not None:
@@ -49,46 +50,39 @@ def process_video(input_path, job_id):
             for box, obj_id, cls in zip(boxes, ids, classes):
                 label = names[cls]
                 cy = int((box[1] + box[3]) / 2)
-
-                # 2. Logic: Crossing Check
                 if obj_id in prev_positions:
                     if prev_positions[obj_id] < line_y and cy >= line_y:
                         if obj_id not in counted_ids:
                             counted_ids.add(obj_id)
-                            counts[label] += 1
-                            history.append({
-                                "track_id": obj_id, "type": label, 
-                                "frame": frame_idx, "time": round(frame_idx/fps, 2)
-                            })
+                            counts[label] = counts.get(label, 0) + 1
+                            history.append({"track_id": obj_id, "type": label, "time": round(frame_idx/fps, 2)})
                 prev_positions[obj_id] = cy
-
-                # 3. Custom Tracking Annotations
                 annotator.draw_tracking(frame, box, obj_id, label)
 
-        # 4. Custom Dashboard Overlay
         annotator.draw_dashboard(frame, counts, len(counted_ids))
-
         out.write(frame)
         frame_idx += 1
         
-        jobs[job_id] = {
-            "status": "processing",
-            "progress": min(98, int((frame_idx / total_frames) * 100)),
-            "total_count": len(counted_ids),
-            "counts_by_class": counts
-        }
+        # Periodically update the database (e.g., every 30 frames) to reduce I/O
+        if frame_idx % 30 == 0:
+            job_record.status = "processing"
+            job_record.progress = int((frame_idx / total_frames) * 100)
+            job_record.total_count = len(counted_ids)
+            job_record.counts_by_class = counts
+            db.commit()
 
     cap.release()
     out.release()
 
-    # 5. Conversion Phase
-    jobs[job_id]["status"] = "converting"
+    job_record.status = "converting"
+    db.commit()
+    
     convert_to_h264(temp_path, final_path)
-
-    # 6. Finalize
     generate_csv_report(history, job_id, "storage/results", round(time.time() - start_time, 2))
-    jobs[job_id].update({
-        "status": "completed", "progress": 100,
-        "video_url": f"/static/{job_id}_processed.mp4",
-        "report_url": f"/api/download/{job_id}"
-    })
+
+    job_record.status = "completed"
+    job_record.progress = 100
+    job_record.video_url = f"/static/{job_id}_processed.mp4"
+    job_record.report_url = f"/api/download/{job_id}"
+    db.commit()
+    db.close()

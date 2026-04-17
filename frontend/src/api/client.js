@@ -5,8 +5,16 @@ const api = axios.create({
 });
 
 /**
+ * Fetches all historical and current jobs from the database.
+ * Path: GET /api/jobs
+ */
+export async function getAllJobs() {
+  const response = await api.get("/jobs");
+  return response.data;
+}
+
+/**
  * Uploads a video file to the backend.
- * Returns an object containing the job_id and a taskId for tracking.
  */
 export async function uploadVideo(file) {
   const formData = new FormData();
@@ -16,7 +24,6 @@ export async function uploadVideo(file) {
     headers: { "Content-Type": "multipart/form-data" },
   });
 
-  // Explicitly mapping properties to avoid using the spread (...) operator
   return {
     job_id: response.data.job_id,
     taskId: response.data.job_id,
@@ -26,7 +33,6 @@ export async function uploadVideo(file) {
 
 /**
  * Fetches the current processing status of a specific job.
- * Path: GET /api/status/{taskId}
  */
 export async function getProcessingStatus(taskId) {
   const response = await api.get(`/status/${taskId}`);
@@ -35,7 +41,6 @@ export async function getProcessingStatus(taskId) {
 
 /**
  * Downloads the generated CSV report for a completed job.
- * Path: GET /api/download/{taskId}
  */
 export async function downloadReport(taskId) {
   const response = await api.get(`/download/${taskId}`, {

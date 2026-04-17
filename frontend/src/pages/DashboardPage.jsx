@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutList, Play, CheckCircle, RefreshCcw, AlertCircle } from "lucide-react";
-import axios from "axios";
+import { Play, CheckCircle, RefreshCcw, AlertCircle } from "lucide-react";
+// Import the centralized API client
+import { getAllJobs } from "../api/client"; 
 import Card from "../components/Card";
 import Button from "../components/Button";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 export default function DashboardPage() {
   const [jobs, setJobs] = useState([]);
@@ -13,9 +15,8 @@ export default function DashboardPage() {
 
   const fetchJobs = async () => {
     try {
-      // Use the full URL to avoid proxy issues
-      const response = await axios.get("http://localhost:8000/api/jobs");
-      setJobs(response.data);
+      const data = await getAllJobs();
+      setJobs(data);
       setError(null);
     } catch (err) {
       console.error("Fetch error:", err);
@@ -65,43 +66,52 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-slate-800">
                 {jobs.length === 0 && !loading && (
                   <tr>
-                    <td colSpan="5" className="py-12 text-center text-slate-500">
+                    <td colSpan="6" className="py-12 text-center text-slate-500">
                       No missions found. Start by uploading a video.
                     </td>
                   </tr>
                 )}
-                {jobs.map((job) => (
-                  <tr key={job.id} className="group hover:bg-slate-900/40 transition-colors">
-                    <td className="py-4 px-4 font-medium">{job.id}</td>
-                    <td className="py-4 px-4 font-medium">{job.filename}</td>
-                    <td className="py-4 px-4">
-                      <span className={`flex items-center gap-2 text-sm font-medium ${
-                        job.status === 'completed' ? 'text-green-400' : 'text-yellow-400'
-                      }`}>
-                        {job.status === 'completed' ? 
-                          <CheckCircle size={14}/> : 
-                          <RefreshCcw size={14} className="animate-spin"/>
-                        }
-                        {job.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 font-mono text-slate-300">{job.progress}%</td>
-                    <td className="py-4 px-4 font-mono text-cyan-400 text-lg">{job.total_count}</td>
-                    <td className="py-4 px-4 text-right">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => {
-                          localStorage.setItem("drone-task-id", job.id);
-                          navigate("/analytics");
-                        }}
-                      >
-                        <Play size={14} className="mr-2" />
-                        Details
-                      </Button>
+                
+                {loading && jobs.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center">
+                      <LoadingSpinner className="mx-auto" />
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  jobs.map((job) => (
+                    <tr key={job.id} className="group hover:bg-slate-900/40 transition-colors">
+                      <td className="py-4 px-4 font-mono text-xs text-slate-500">{job.id.slice(0, 8)}...</td>
+                      <td className="py-4 px-4 font-medium">{job.filename}</td>
+                      <td className="py-4 px-4">
+                        <span className={`flex items-center gap-2 text-sm font-medium ${
+                          job.status === 'completed' ? 'text-green-400' : 'text-yellow-400'
+                        }`}>
+                          {job.status === 'completed' ? 
+                            <CheckCircle size={14}/> : 
+                            <RefreshCcw size={14} className="animate-spin"/>
+                          }
+                          {job.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 font-mono text-slate-300">{job.progress}%</td>
+                      <td className="py-4 px-4 font-mono text-cyan-400 text-lg">{job.total_count}</td>
+                      <td className="py-4 px-4 text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => {
+                            localStorage.setItem("drone-task-id", job.id);
+                            navigate("/analytics");
+                          }}
+                        >
+                          <Play size={14} className="mr-2" />
+                          Details
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

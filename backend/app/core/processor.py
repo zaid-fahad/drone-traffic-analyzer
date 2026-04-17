@@ -9,7 +9,6 @@ from app.db.database import SessionLocal
 from app.db.models import Job
 
 def process_video(input_path, job_id):
-    # Create a fresh DB session for this thread
     db = SessionLocal()
     job_record = db.query(Job).filter(Job.id == job_id).first()
     
@@ -25,11 +24,15 @@ def process_video(input_path, job_id):
     final_path = os.path.join("storage/results", f"{job_id}_processed.mp4")
     out = cv2.VideoWriter(temp_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
+    # --- BIDIRECTIONAL DATA STRUCTURE ---
     counted_ids = set()
-    counts = {"car": 0, "truck": 0, "bus": 0, "motorcycle": 0}
+    counts = {
+        "inbound": {"total": 0, "car": 0, "truck": 0, "bus": 0, "motorcycle": 0},
+        "outbound": {"total": 0, "car": 0, "truck": 0, "bus": 0, "motorcycle": 0}
+    }
     prev_positions = {}
     history = []
-    line_y = int(height * 0.65)
+    line_y = int(height * 0.6) # Center line for drone footage
     
     frame_idx = 0
     start_time = time.time()
@@ -49,31 +52,48 @@ def process_video(input_path, job_id):
 
             for box, obj_id, cls in zip(boxes, ids, classes):
                 label = names[cls]
-                cy = int((box[1] + box[3]) / 2)
+                cy = int((box[1] + box[3]) / 2) # Centroid Y
+
                 if obj_id in prev_positions:
-                    if prev_positions[obj_id] < line_y and cy >= line_y:
+                    old_cy = prev_positions[obj_id]
+                    
+                    # LOGIC: Direction Detection
+                    # INBOUND: Top -> Bottom (Y increases)
+                    if old_cy < line_y and cy >= line_y:
                         if obj_id not in counted_ids:
                             counted_ids.add(obj_id)
-                            counts[label] = counts.get(label, 0) + 1
-                            history.append({"track_id": obj_id, "type": label, "time": round(frame_idx/fps, 2)})
+                            counts["inbound"]["total"] += 1
+                            counts["inbound"][label] = counts["inbound"].get(label, 0) + 1
+                            history.append({"track_id": obj_id, "type": label, "dir": "IN", "time": round(frame_idx/fps, 2)})
+                    
+                    # OUTBOUND: Bottom -> Top (Y decreases)
+                    elif old_cy > line_y and cy <= line_y:
+                        if obj_id not in counted_ids:
+                            counted_ids.add(obj_id)
+                            counts["outbound"]["total"] += 1
+                            counts["outbound"][label] = counts["outbound"].get(label, 0) + 1
+                            history.append({"track_id": obj_id, "type": label, "dir": "OUT", "time": round(frame_idx/fps, 2)})
+
                 prev_positions[obj_id] = cy
                 annotator.draw_tracking(frame, box, obj_id, label)
 
-        annotator.draw_dashboard(frame, counts, len(counted_ids))
+        # Updated: Draw a bidirectional dashboard
+        annotator.draw_bidirectional_dashboard(frame, counts)
+        
         out.write(frame)
         frame_idx += 1
         
-        # Periodically update the database (e.g., every 30 frames) to reduce I/O
         if frame_idx % 30 == 0:
             job_record.status = "processing"
             job_record.progress = int((frame_idx / total_frames) * 100)
-            job_record.total_count = len(counted_ids)
-            job_record.counts_by_class = counts
+            # We flatten the total for the DB summary
+            job_record.total_count = counts["inbound"]["total"] + counts["outbound"]["total"]
+            job_record.counts_by_class = counts # DB saves the full split JSON
             db.commit()
 
     cap.release()
     out.release()
-
+    
     job_record.status = "converting"
     db.commit()
     

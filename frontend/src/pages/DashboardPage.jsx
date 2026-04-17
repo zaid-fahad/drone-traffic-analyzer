@@ -1,28 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Play, CheckCircle, RefreshCcw, AlertCircle } from "lucide-react";
-// Import the centralized API client
-import { getAllJobs } from "../api/client"; 
+import { Play, CheckCircle, RefreshCcw, LayoutDashboard, Plus } from "lucide-react";
+import { getAllJobs } from "../api/client";
 import Card from "../components/Card";
 import Button from "../components/Button";
-import LoadingSpinner from "../components/LoadingSpinner";
 
 export default function DashboardPage() {
   const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   const fetchJobs = async () => {
     try {
       const data = await getAllJobs();
       setJobs(data);
-      setError(null);
     } catch (err) {
-      console.error("Fetch error:", err);
-      setError("Failed to sync with mission control.");
-    } finally {
-      setLoading(false);
+      console.error("Dashboard sync failed.");
     }
   };
 
@@ -33,90 +25,72 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 text-white">
+    <div className="min-h-screen p-8 bg-slate-950 text-white">
       <div className="max-w-6xl mx-auto space-y-8">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-end">
           <div>
-            <h1 className="text-3xl font-bold">Traffic Analyzer</h1>
-            <p className="text-slate-400">View historical drone traffic data</p>
+            <div className="flex items-center gap-2 text-cyan-400 mb-2">
+              <LayoutDashboard size={20} />
+              <span className="text-sm font-bold tracking-tighter uppercase">Drone</span>
+            </div>
+            <h1 className="text-4xl font-extrabold tracking-tight">Traffic Analysis</h1>
           </div>
-          <Button onClick={() => navigate("/upload")}>New Task</Button>
+          <Button onClick={() => navigate("/upload")} className="bg-cyan-600 hover:bg-cyan-500">
+            <Plus size={18} className="mr-2" /> New Task
+          </Button>
         </div>
 
-        {error && (
-          <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">
-            <AlertCircle size={18} />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 text-sm uppercase tracking-wider">
-                    <th className="pb-4 px-4 font-semibold">Task ID</th>
-                    <th className="pb-4 px-4 font-semibold">File Name</th>
-                    <th className="pb-4 px-4 font-semibold">Status</th>
-                    <th className="pb-4 px-4 font-semibold">Progress</th>
-                    <th className="pb-4 px-4 font-semibold">Vehicles</th>
-                    <th className="pb-4 px-4 text-right">Action</th>
+        <Card className="p-0 overflow-hidden border-slate-800">
+          <table className="w-full text-left">
+            <thead className="bg-slate-900/50 text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="py-4 px-6">Job ID</th>
+                <th className="py-4 px-6">Filename</th>
+                <th className="py-4 px-6">Status</th>
+                <th className="py-4 px-6">Total</th>
+                <th className="py-4 px-6 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {jobs.map((job) => (
+                <tr key={job.id} className="hover:bg-slate-900/30 transition-colors">
+                  <td className="py-4 px-6 font-mono text-xs text-slate-500">{job.id.slice(0, 8)}</td>
+                  <td className="py-4 px-6 font-medium text-slate-200">{job.filename}</td>
+                  <td className="py-4 px-6">
+                    <StatusBadge status={job.status} />
+                  </td>
+                  <td className="py-4 px-6 font-mono text-cyan-400 font-bold text-lg">
+                    {/* Summing Inbound and Outbound if available, else use total_count */}
+                    {job.counts_by_class?.inbound 
+                      ? job.counts_by_class.inbound.total + job.counts_by_class.outbound.total 
+                      : job.total_count}
+                  </td>
+                  <td className="py-4 px-6 text-right">
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      localStorage.setItem("drone-task-id", job.id);
+                      navigate("/analytics");
+                    }}>
+                      <Play size={14} className="mr-2" /> Details
+                    </Button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {jobs.length === 0 && !loading && (
-                  <tr>
-                    <td colSpan="6" className="py-12 text-center text-slate-500">
-                      No missions found. Start by uploading a video.
-                    </td>
-                  </tr>
-                )}
-                
-                {loading && jobs.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="py-12 text-center">
-                      <LoadingSpinner className="mx-auto" />
-                    </td>
-                  </tr>
-                ) : (
-                  jobs.map((job) => (
-                    <tr key={job.id} className="group hover:bg-slate-900/40 transition-colors">
-                      <td className="py-4 px-4 font-mono text-xs text-slate-500">{job.id.slice(0, 8)}...</td>
-                      <td className="py-4 px-4 font-medium">{job.filename}</td>
-                      <td className="py-4 px-4">
-                        <span className={`flex items-center gap-2 text-sm font-medium ${
-                          job.status === 'completed' ? 'text-green-400' : 'text-yellow-400'
-                        }`}>
-                          {job.status === 'completed' ? 
-                            <CheckCircle size={14}/> : 
-                            <RefreshCcw size={14} className="animate-spin"/>
-                          }
-                          {job.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 font-mono text-slate-300">{job.progress}%</td>
-                      <td className="py-4 px-4 font-mono text-cyan-400 text-lg">{job.total_count}</td>
-                      <td className="py-4 px-4 text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => {
-                            localStorage.setItem("drone-task-id", job.id);
-                            navigate("/analytics");
-                          }}
-                        >
-                          <Play size={14} className="mr-2" />
-                          Details
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </Card>
       </div>
     </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const isComp = status === 'completed';
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+      isComp ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400'
+    }`}>
+      {isComp ? <CheckCircle size={12} /> : <RefreshCcw size={12} className="animate-spin" />}
+      {status.toUpperCase()}
+    </span>
   );
 }

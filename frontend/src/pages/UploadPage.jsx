@@ -41,7 +41,7 @@ export default function UploadPage() {
 
     try {
       const result = await uploadVideo(file);
-      localStorage.setItem("drone-task-id", result.taskId);
+      localStorage.setItem("drone-task-id", result.job_id);
       navigate("/analytics");
     } catch (uploadError) {
       setError("Upload failed. Please check your connection and try again.");

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Download, Play, ArrowLeft } from "lucide-react";
+import { Activity, Download, Play, ArrowLeft, ArrowDown, ArrowUp } from "lucide-react";
 import VideoPlayer from "../components/VideoPlayer";
 import Button from "../components/Button";
 import Card from "../components/Card";
@@ -8,17 +8,18 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import { getProcessingStatus, downloadReport } from "../api/client";
 import usePolling from "../hooks/usePolling";
 
-const initialStats = { total: 0, cars: 0, trucks: 0, buses: 0 };
-
 export default function AnalyticsPage() {
   const navigate = useNavigate();
-  const [taskId, setTaskId] = useState("");
+  const [jobId, setJobId] = useState("");
   const [status, setStatus] = useState("pending");
   const [progress, setProgress] = useState(0);
-  const [stats, setStats] = useState(initialStats);
   const [videoUrl, setVideoUrl] = useState("");
   const [error, setError] = useState("");
   const [downloadLoading, setDownloadLoading] = useState(false);
+
+  // States for Bidirectional Split
+  const [inbound, setInbound] = useState({ total: 0, car: 0, truck: 0, bus: 0, motorcycle: 0 });
+  const [outbound, setOutbound] = useState({ total: 0, car: 0, truck: 0, bus: 0, motorcycle: 0 });
 
   useEffect(() => {
     const stored = localStorage.getItem("drone-task-id");
@@ -26,27 +27,20 @@ export default function AnalyticsPage() {
       navigate("/");
       return;
     }
-    setTaskId(stored);
+    setJobId(stored);
   }, [navigate]);
 
   const fetchStatus = useCallback(async () => {
-    if (!taskId) return;
+    if (!jobId) return;
     try {
-      const response = await getProcessingStatus(taskId);
+      const response = await getProcessingStatus(jobId);
       const currentStatus = response.status || "pending";
       setStatus(currentStatus);
+      setProgress(response.progress || 0);
 
       if (response.counts_by_class) {
-        setStats({
-          total: response.total_count || 0,
-          cars: response.counts_by_class.car || 0,
-          trucks: response.counts_by_class.truck || 0,
-          buses: response.counts_by_class.bus || 0,
-        });
-      }
-
-      if (response.progress !== undefined) {
-        setProgress(response.progress);
+        if (response.counts_by_class.inbound) setInbound(response.counts_by_class.inbound);
+        if (response.counts_by_class.outbound) setOutbound(response.counts_by_class.outbound);
       }
 
       if (currentStatus === "completed" && response.video_url) {
@@ -56,20 +50,20 @@ export default function AnalyticsPage() {
       console.error("Polling error:", pollError);
       setError("Unable to fetch processing status. Ensure the backend is running.");
     }
-  }, [taskId]);
+  }, [jobId]);
 
-  const isEnabled = !!taskId && status !== "completed" && status !== "error";
+  const isEnabled = !!jobId && status !== "completed" && status !== "error";
   const { isPolling } = usePolling(fetchStatus, 2000, isEnabled);
 
   const handleDownload = async () => {
     setDownloadLoading(true);
     setError("");
     try {
-      const blob = await downloadReport(taskId);
+      const blob = await downloadReport(jobId);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `drone-traffic-report-${taskId}.csv`;
+      link.download = `drone-traffic-report-${jobId}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -88,7 +82,7 @@ export default function AnalyticsPage() {
     <div className="min-h-screen p-4 bg-slate-950">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Header section - UPDATED BUTTON */}
+        {/* Header section */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -96,10 +90,11 @@ export default function AnalyticsPage() {
           </Button>
           <div className="text-right">
             <h1 className="text-2xl font-bold text-white">Analysis Results</h1>
-            <p className="text-slate-400 text-sm">Task ID: {taskId}</p>
+            <p className="text-slate-400 text-sm font-mono">ID: {jobId}</p>
           </div>
         </div>
 
+        {/* The Requested Process Card Section */}
         <Card>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
@@ -138,20 +133,33 @@ export default function AnalyticsPage() {
           </div>
         </Card>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Total Unique", value: stats.total, color: "text-blue-400" },
-            { label: "Cars", value: stats.cars, color: "text-green-400" },
-            { label: "Trucks", value: stats.trucks, color: "text-orange-400" },
-            { label: "Buses", value: stats.buses, color: "text-purple-400" },
-          ].map((item) => (
-            <Card key={item.label} className="text-center py-6">
-              <div className={`text-4xl font-bold ${item.color} mb-1 font-mono`}>
-                {item.value}
-              </div>
-              <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">{item.label}</div>
-            </Card>
-          ))}
+        {/* Bidirectional Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Inbound (Down) */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-green-400 font-bold px-2 text-sm uppercase tracking-wider">
+              <ArrowDown size={16} /> Inbound Traffic
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <StatCard label="Total" value={inbound.total} color="text-green-400" />
+              <StatCard label="Cars" value={inbound.car} />
+              <StatCard label="Trucks" value={inbound.truck} />
+              <StatCard label="Buses" value={inbound.bus} />
+            </div>
+          </div>
+
+          {/* Outbound (Up) */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-blue-400 font-bold px-2 text-sm uppercase tracking-wider">
+              <ArrowUp size={16} /> Outbound Traffic
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <StatCard label="Total" value={outbound.total} color="text-blue-400" />
+              <StatCard label="Cars" value={outbound.car} />
+              <StatCard label="Trucks" value={outbound.truck} />
+              <StatCard label="Buses" value={outbound.bus} />
+            </div>
+          </div>
         </div>
 
         {status === "completed" && videoUrl && (
@@ -169,7 +177,7 @@ export default function AnalyticsPage() {
             <div className="text-center md:text-left">
               <h3 className="text-lg font-medium text-white mb-1">Export Telemetry Data</h3>
               <p className="text-slate-400 text-sm">
-                Generate a CSV report containing tracking IDs and timestamps.
+                Generate a CSV report containing directional tracking IDs and timestamps.
               </p>
             </div>
             <Button
@@ -193,11 +201,22 @@ export default function AnalyticsPage() {
         </Card>
 
         {error && (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg animate-pulse">
+          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg animate-pulse text-center">
             <p className="text-red-400 text-sm font-medium">{error}</p>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function StatCard({ label, value, color = "text-white" }) {
+  return (
+    <Card className="py-6 text-center">
+      <div className={`text-4xl font-bold ${color} mb-1 font-mono`}>
+        {value || 0}
+      </div>
+      <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">{label}</div>
+    </Card>
   );
 }

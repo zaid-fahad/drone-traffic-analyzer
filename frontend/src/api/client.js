@@ -26,7 +26,6 @@ export async function uploadVideo(file) {
 
   return {
     job_id: response.data.job_id,
-    taskId: response.data.job_id,
     message: response.data.message
   };
 }

@@ -65,10 +65,15 @@ export default function DashboardPage() {
             label="Completed" 
             value={jobs.filter(j => j.status === 'completed').length} 
           />
+
           <MetricCard 
+            label="Cancelled" 
+            value={jobs.filter(j => j.status === 'cancelled').length} 
+          />
+          {/* <MetricCard 
             label="Total Detections" 
             value={jobs.reduce((acc, curr) => acc + (curr.total_count || 0), 0)} 
-          />
+          /> */}
         </div>
 
         {/* Tasks Table */}
@@ -102,33 +107,36 @@ export default function DashboardPage() {
                   </td>
                   <td className="py-4 px-6 text-right">
                     <div className="flex justify-end items-center gap-2">
-                      {job.status === "completed" ? (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-slate-400 hover:text-white"
-                          onClick={() => {
-                            localStorage.setItem("drone-task-id", job.id);
-                            navigate("/analytics");
-                          }}
-                        >
-                          View Results <ChevronRight size={14} className="ml-1" />
-                        </Button>
-                      ) : (
-                        job.status !== "cancelled" && (
-                          <button 
-                            onClick={() => handleCancel(job.id)} 
-                            className="p-2 text-slate-600 hover:text-red-400 transition-colors"
-                            title="Cancel Task"
-                          >
-                            <XCircle size={18} />
-                          </button>
-                        )
-                      )}
-                      {/* <button className="p-2 text-slate-700 hover:text-slate-400 transition-colors">
-                        <Trash2 size={16} />
-                      </button> */}
-                    </div>
+  {/* Always show View/Inspect button for all states */}
+  <Button 
+    variant="ghost" 
+    size="sm" 
+    className="text-slate-400 hover:text-white"
+    onClick={() => {
+      localStorage.setItem("drone-task-id", job.id);
+      navigate("/analytics");
+    }}
+  >
+    {job.status === "completed" ? "View Results" : "Inspect Telemetry"}
+    <ChevronRight size={14} className="ml-1" />
+  </Button>
+
+  {/* Only show Cancel if the task is active (not completed and not already cancelled) */}
+  {job.status !== "completed" && job.status !== "cancelled" && (
+    <button 
+      onClick={() => handleCancel(job.id)} 
+      className="p-2 text-slate-600 hover:text-red-400 transition-colors border-l border-slate-800 ml-1 pl-3"
+      title="Terminate Task"
+    >
+      <XCircle size={18} />
+    </button>
+  )}
+
+  {/* Delete button for record management
+  <button className="p-2 text-slate-700 hover:text-slate-400 transition-colors">
+    <Trash2 size={16} />
+  </button> */}
+</div>
                   </td>
                 </tr>
               ))}
